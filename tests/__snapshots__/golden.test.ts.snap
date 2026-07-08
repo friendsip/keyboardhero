@@ -1,0 +1,16 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden run > a seeded autoplay run over a full rail is fully deterministic 1`] = `
+{
+  "accuracy": 0.9340659340659341,
+  "correct": 85,
+  "durationMs": 5966.666666666686,
+  "eventCount": 143,
+  "eventLogHash": 2558312004,
+  "kills": 14,
+  "maxCombo": 2,
+  "missed": 6,
+  "score": 1700,
+  "wpm": 170.94972067039052,
+}
+`;

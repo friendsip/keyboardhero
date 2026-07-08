@@ -1,0 +1,17 @@
+[
+  "assert", "async", "atomic", "await", "boolean", "boundary", "branch",
+  "buffer", "bugfix", "build", "cache", "callback", "closure", "commit",
+  "compile", "coverage", "deadlock", "debug", "deploy", "diff", "edge",
+  "enum", "except", "expect", "export", "failure", "fixture", "flaky",
+  "fork", "function", "generic", "getter", "green", "guard", "hash",
+  "heap", "hook", "hotfix", "import", "inline", "integer", "iterate",
+  "join", "json", "jump", "kernel", "keyword", "kill", "lambda", "linter",
+  "logger", "loop", "merge", "method", "mock", "module", "mutant",
+  "mutate", "nested", "node", "null", "object", "opcode", "oracle",
+  "parser", "patch", "pipeline", "pointer", "private", "public", "query",
+  "queue", "quirk", "rebase", "refactor", "regress", "return", "runner",
+  "runtime", "setter", "snapshot", "spec", "static", "stub", "suite",
+  "syntax", "test", "thread", "throw", "token", "trace", "triage", "undo",
+  "unit", "update", "upstream", "variable", "vector", "verify", "void",
+  "warning", "watcher", "wrapper", "yield", "zero", "zombie"
+]
