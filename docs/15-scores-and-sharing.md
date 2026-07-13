@@ -9,9 +9,13 @@ later; this records the intended shape so the implementation doesn't drift.
 - **No game saves.** The game is too fast-paced for save states — a run is
   won or lost in one sitting. Only *identity and settings* persist:
   3-letter initials (`ttf.user`), sound preference (`ttf.sound`).
-- **Players are 3-letter initials** (arcade convention), already
-  implemented on the menu. Initials are the identity key for all scoring —
-  no accounts, no email registration, no passwords.
+- **Players are 5-character mutated usernames** (implemented on the menu):
+  the player types 5 alphanumerics, the game mutates one character into a
+  keyboard symbol ("h3nry" → "h3n$y"), and "fix my username" only mutates a
+  different character. The mutated name is the identity key for all
+  scoring — no accounts, no email registration, no passwords. The symbol
+  makes collisions rarer than plain initials (36⁵ × 5 × 32 name space) and
+  is a joke players will remember.
 
 ## Permanent high-score table ("all participants")
 

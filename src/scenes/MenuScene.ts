@@ -6,33 +6,61 @@ import type { KeyRouter } from '../input/KeyRouter';
 import { MAX_LEVEL } from '../data/words/pools';
 
 const USER_KEY = 'ttf.user';
+const NAME_LENGTH = 5;
+/** The 32 punctuation/symbol marks on a standard keyboard (ASCII punctuation). */
+const SYMBOLS = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~';
+const ALNUM = /^[a-zA-Z0-9]$/;
 
-/** Arcade-style player identity: up to three letters, persisted locally. */
+function isMutatedName(name: string): boolean {
+  if (name.length !== NAME_LENGTH) return false;
+  let symbols = 0;
+  for (const ch of name) {
+    if (SYMBOLS.includes(ch)) symbols++;
+    else if (!ALNUM.test(ch)) return false;
+  }
+  return symbols === 1;
+}
+
+/** A mutated 5-char username, persisted locally once a game starts. */
 export function loadUser(): string {
   try {
-    const raw = (localStorage.getItem(USER_KEY) ?? '').toUpperCase();
-    return /^[A-Z]{1,3}$/.test(raw) ? raw : '';
+    const raw = localStorage.getItem(USER_KEY) ?? '';
+    return isMutatedName(raw) ? raw : '';
   } catch {
     return '';
   }
 }
 
-export function saveUser(initials: string): void {
+export function saveUser(name: string): void {
   try {
-    localStorage.setItem(USER_KEY, initials);
+    localStorage.setItem(USER_KEY, name);
   } catch {
     /* non-fatal */
   }
 }
 
+function mutateName(base: string, avoidPos: number | null): { name: string; pos: number } {
+  let pos = Math.floor(Math.random() * base.length);
+  while (base.length > 1 && pos === avoidPos) {
+    pos = Math.floor(Math.random() * base.length);
+  }
+  const symbol = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)] ?? '?';
+  return { name: base.slice(0, pos) + symbol + base.slice(pos + 1), pos };
+}
+
+type UserState = 'display' | 'editing' | 'mutated';
+
 export class MenuScene extends Phaser.Scene {
   private soundText!: Phaser.GameObjects.BitmapText;
   private levelText!: Phaser.GameObjects.BitmapText;
   private userText!: Phaser.GameObjects.BitmapText;
+  private fixText!: Phaser.GameObjects.BitmapText;
   private startText!: Phaser.GameObjects.BitmapText;
   private level = 1;
-  private user = '';
-  private editingUser = false;
+  private userState: UserState = 'display';
+  private baseName = '';
+  private mutatedName = '';
+  private mutatedPos: number | null = null;
 
   constructor() {
     super('Menu');
@@ -41,9 +69,12 @@ export class MenuScene extends Phaser.Scene {
   create(): void {
     const audio = this.registry.get('audio') as AudioBus;
     const router = this.registry.get('keyRouter') as KeyRouter;
-    this.user = loadUser();
-    this.editingUser = this.user === '';
-    this.registry.set('user', this.user);
+
+    this.mutatedName = loadUser();
+    this.userState = this.mutatedName === '' ? 'editing' : 'display';
+    this.baseName = '';
+    this.mutatedPos = null;
+    this.registry.set('user', this.mutatedName);
 
     const cx = FIELD_WIDTH / 2;
 
@@ -66,7 +97,7 @@ export class MenuScene extends Phaser.Scene {
       'do not let them reach the BUILD',
     ];
     this.add
-      .bitmapText(cx, 268, FONT_KEY, instructions.join('\n'), 20)
+      .bitmapText(cx, 262, FONT_KEY, instructions.join('\n'), 20)
       .setOrigin(0.5, 0)
       .setCenterAlign()
       .setTint(0xe6edf3)
@@ -87,21 +118,28 @@ export class MenuScene extends Phaser.Scene {
     }
 
     this.userText = this.add
-      .bitmapText(cx, 452, FONT_KEY, '', 24)
+      .bitmapText(cx, 438, FONT_KEY, '', 24)
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
-    this.userText.on('pointerdown', () => this.startUserEdit(audio));
+    this.userText.on('pointerdown', () => this.startUserEdit());
+
+    this.fixText = this.add
+      .bitmapText(cx, 476, FONT_KEY, '[ FIX MY USERNAME ]', 20)
+      .setOrigin(0.5)
+      .setTint(0xf2cc60)
+      .setInteractive({ useHandCursor: true });
+    this.fixText.on('pointerdown', () => this.fixUsername());
 
     this.soundText = this.add
-      .bitmapText(cx, 496, FONT_KEY, '', 22)
+      .bitmapText(cx, 514, FONT_KEY, '', 20)
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     this.soundText.on('pointerdown', () => this.toggleSound());
 
-    this.levelText = this.add.bitmapText(cx, 538, FONT_KEY, '', 19).setOrigin(0.5).setTint(0x58a6ff);
+    this.levelText = this.add.bitmapText(cx, 550, FONT_KEY, '', 19).setOrigin(0.5).setTint(0x58a6ff);
 
     this.startText = this.add
-      .bitmapText(cx, 628, FONT_KEY, '', 28)
+      .bitmapText(cx, 628, FONT_KEY, '', 21)
       .setOrigin(0.5)
       .setTint(0xf2cc60);
     this.tweens.add({ targets: this.startText, alpha: 0.35, duration: 700, yoyo: true, repeat: -1 });
@@ -109,10 +147,19 @@ export class MenuScene extends Phaser.Scene {
     this.renderAll(audio.enabled);
 
     const handler = (char: string): void => {
-      if (this.editingUser) {
-        this.handleUserKey(char, audio);
+      if (this.userState === 'editing') {
+        this.handleEditKey(char, audio);
         return;
       }
+      if (this.userState === 'mutated') {
+        if (char === ' ') {
+          this.commitAndStart();
+        } else if (char.toLowerCase() === 'f') {
+          this.fixUsername();
+        }
+        return;
+      }
+      // display state: normal menu controls
       if (char === ' ') {
         this.scene.start('Game', { level: this.level });
         return;
@@ -122,13 +169,13 @@ export class MenuScene extends Phaser.Scene {
         return;
       }
       if (char.toLowerCase() === 'n') {
-        this.startUserEdit(audio);
+        this.startUserEdit();
         return;
       }
       const digit = Number(char);
       if (Number.isInteger(digit) && digit >= 1 && digit <= MAX_LEVEL) {
         this.level = digit;
-        this.renderAll((this.registry.get('audio') as AudioBus).enabled);
+        this.renderAll(audio.enabled);
         audio.click(digit);
       }
     };
@@ -136,27 +183,44 @@ export class MenuScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => router.clearHandler(handler));
   }
 
-  private startUserEdit(audio: AudioBus): void {
-    this.editingUser = true;
-    this.user = '';
-    this.renderAll(audio.enabled);
-  }
-
-  private handleUserKey(char: string, audio: AudioBus): void {
-    if (/^[a-zA-Z]$/.test(char)) {
-      this.user += char.toUpperCase();
-      audio.click(this.user.length);
-      if (this.user.length >= 3) this.commitUser();
-    } else if (char === ' ' && this.user.length > 0) {
-      this.commitUser();
+  private handleEditKey(char: string, audio: AudioBus): void {
+    if (ALNUM.test(char) && this.baseName.length < NAME_LENGTH) {
+      this.baseName += char;
+      audio.click(this.baseName.length);
+    } else if (char === '\n') {
+      if (this.baseName.length === NAME_LENGTH) {
+        const { name, pos } = mutateName(this.baseName, null);
+        this.mutatedName = name;
+        this.mutatedPos = pos;
+        this.userState = 'mutated';
+        audio.kill();
+      } else {
+        audio.miss();
+      }
     }
     this.renderAll(audio.enabled);
   }
 
-  private commitUser(): void {
-    this.editingUser = false;
-    saveUser(this.user);
-    this.registry.set('user', this.user);
+  private startUserEdit(): void {
+    this.userState = 'editing';
+    this.baseName = '';
+    this.mutatedPos = null;
+    this.renderAll((this.registry.get('audio') as AudioBus).enabled);
+  }
+
+  private fixUsername(): void {
+    if (this.userState !== 'mutated') return;
+    const { name, pos } = mutateName(this.baseName, this.mutatedPos);
+    this.mutatedName = name;
+    this.mutatedPos = pos;
+    (this.registry.get('audio') as AudioBus).kill();
+    this.renderAll((this.registry.get('audio') as AudioBus).enabled);
+  }
+
+  private commitAndStart(): void {
+    saveUser(this.mutatedName);
+    this.registry.set('user', this.mutatedName);
+    this.scene.start('Game', { level: this.level });
   }
 
   private toggleSound(): void {
@@ -167,12 +231,16 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private renderAll(soundOn: boolean): void {
-    if (this.editingUser) {
-      const slots = (this.user + '___').slice(0, 3).split('').join(' ');
-      this.userText.setText(`ENTER YOUR INITIALS: ${slots}`).setTint(0xf2cc60);
-      this.startText.setText('TYPE UP TO 3 LETTERS');
+    this.fixText.setVisible(this.userState === 'mutated');
+    if (this.userState === 'editing') {
+      const slots = (this.baseName + '_'.repeat(NAME_LENGTH)).slice(0, NAME_LENGTH).split('').join(' ');
+      this.userText.setText(`SET YOUR USERNAME: ${slots}`).setTint(0xf2cc60);
+      this.startText.setText('TYPE 5 CHARACTERS (LETTERS + NUMBERS), THEN ENTER');
+    } else if (this.userState === 'mutated') {
+      this.userText.setText(`YOUR USERNAME HAS BEEN MUTATED TO: ${this.mutatedName}`).setTint(0x3fb950);
+      this.startText.setText('PRESS SPACE TO START (THIS NAME BECOMES PERMANENT)');
     } else {
-      this.userText.setText(`PLAYER: ${this.user || '???'}  (press N or click to change)`).setTint(0x3fb950);
+      this.userText.setText(`PLAYER: ${this.mutatedName || '?????'}  (press N or click to change)`).setTint(0x3fb950);
       this.startText.setText('PRESS SPACE TO START');
     }
     this.soundText.setText(`SOUND: ${soundOn ? 'ON ' : 'OFF'}  (press S or click)`);

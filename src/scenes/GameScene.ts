@@ -300,7 +300,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       if (this.over) {
-        if (char === ' ') {
+        if (char === ' ' || char === '\n') {
           const next = this.won ? (this.level >= MAX_LEVEL ? 1 : this.level + 1) : this.level;
           this.scene.restart({ level: next });
         } else if (char.toLowerCase() === 'm') {
@@ -309,6 +309,7 @@ export class GameScene extends Phaser.Scene {
         }
         return;
       }
+      if (char === '\n') return; // Enter is a menu key, never a game letter
       this.engine.handleKey(char);
     };
     router.setHandler(handler);
