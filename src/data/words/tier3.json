@@ -1,0 +1,7 @@
+[
+  "array", "async", "await", "batch", "build", "cache", "class", "clone",
+  "const", "debug", "error", "fetch", "field", "green", "index", "input",
+  "jumps", "kills", "macro", "merge", "mutex", "patch", "pixel", "proxy",
+  "query", "queue", "regex", "scope", "shell", "stack", "suite", "table",
+  "token", "trace", "tuple", "unzip", "valid", "watch", "yield", "zones"
+]

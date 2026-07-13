@@ -16,7 +16,9 @@ export class WordLabel {
   }
 
   setWord(word: string): void {
-    this.text.setText(word);
+    // Spaces render as '_' so passphrase gaps stay visible; the engine still
+    // expects the real space character.
+    this.text.setText(word.replace(/ /g, '_'));
     this.applyTints(0);
   }
 

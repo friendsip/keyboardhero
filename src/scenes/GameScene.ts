@@ -4,7 +4,8 @@ import type { EngineConfig, EngineState, RailSegment } from '../core/TypingEngin
 import { EnemySprite } from '../entities/EnemySprite';
 import { FONT_KEY } from '../fx/RuntimeFont';
 import type { KeyRouter } from '../input/KeyRouter';
-import words from '../data/words/words.json';
+import type { AudioBus } from '../fx/AudioBus';
+import { WORD_POOLS, SWARM_TIER, MAX_LEVEL, tierForLevel } from '../data/words/pools';
 
 // Pseudo-3D projection: scale = FOCAL / (FOCAL + z); everything derives from it.
 const HORIZON_Y = 270;
@@ -13,15 +14,51 @@ const FOCAL = 260;
 const SPREAD = 620;
 const ROW_SPACING = 160; // z-units between floor grid lines
 
-const RAIL: RailSegment[] = [
-  { kind: 'travel', durationMs: 3500, label: 'lib/utils/' },
-  { kind: 'encounter', mutants: 8, spawnIntervalMs: 1100, maxLive: 5, speedMin: 45, speedMax: 75 },
-  { kind: 'travel', durationMs: 4000, label: 'core/engine/' },
-  { kind: 'encounter', mutants: 12, spawnIntervalMs: 900, maxLive: 6, speedMin: 55, speedMax: 90 },
-  { kind: 'travel', durationMs: 4000, label: 'api/routes/' },
-  { kind: 'encounter', mutants: 16, spawnIntervalMs: 750, maxLive: 7, speedMin: 60, speedMax: 105 },
-  { kind: 'travel', durationMs: 2500, label: 'release gate' },
+const LEVEL_MODULES = [
+  'lib/utils/',
+  'core/engine/',
+  'api/routes/',
+  'ci/pipeline/',
+  'kernel/init/',
+  'release gate',
 ];
+
+const BOSS_NAMES = ['SEGFAULT', 'DEADLOCK', 'THE REGRESSION', 'THE POLYMORPH', 'THE EQUIVALENT', 'THE SURVIVOR'];
+const BOSS_SENTENCES = [
+  'mutants break your code to make it stronger',
+  'a test that never fails is not a test',
+  'coverage is not the same as correctness',
+  'every surviving mutant is a missing assertion',
+  'good tests bite back when the code goes bad',
+  'ship it only when all the mutants are dead',
+];
+
+/**
+ * Each level is a rail of three fights: two waves at the level's word
+ * length (level 1 = 2 letters … level 6 = 8+), with a single-letter
+ * micro-mutant swarm in between. Speeds and counts ramp with the level.
+ */
+function buildRail(level: number): RailSegment[] {
+  const tier = tierForLevel(level);
+  const sp = (base: number): number => base + (level - 1) * 7;
+  const module = LEVEL_MODULES[level - 1] ?? 'release gate';
+  return [
+    { kind: 'travel', durationMs: 3000, label: module },
+    { kind: 'encounter', tier, mutants: 8 + level, spawnIntervalMs: 1000 - level * 40, maxLive: 5, speedMin: sp(42), speedMax: sp(70) },
+    { kind: 'travel', durationMs: 3200, label: 'swarm nest ahead' },
+    { kind: 'encounter', tier: SWARM_TIER, mutants: 10 + level * 2, spawnIntervalMs: 620, maxLive: 7, speedMin: sp(55), speedMax: sp(85) },
+    { kind: 'travel', durationMs: 3200, label: 'deep scan' },
+    { kind: 'encounter', tier, mutants: 10 + level * 2, spawnIntervalMs: 880 - level * 40, maxLive: 6, speedMin: sp(50), speedMax: sp(82) },
+    { kind: 'travel', durationMs: 2500, label: 'boss chamber' },
+    {
+      kind: 'boss',
+      name: BOSS_NAMES[level - 1] ?? 'THE SURVIVOR',
+      sentence: BOSS_SENTENCES[level - 1] ?? BOSS_SENTENCES[0] ?? '',
+      timeLimitMs: (BOSS_SENTENCES[level - 1] ?? '').length * (620 - level * 25),
+    },
+    { kind: 'travel', durationMs: 2200, label: level >= MAX_LEVEL ? 'shipping v1.0.0' : 'checkpoint reached' },
+  ];
+}
 
 export class GameScene extends Phaser.Scene {
   private engine!: TypingEngine;
@@ -29,13 +66,25 @@ export class GameScene extends Phaser.Scene {
   private freeUnits: EnemySprite[] = [];
   private cleanups: Array<() => void> = [];
   private over = false;
+  private won = false;
+  private level = 1;
   private grid!: Phaser.GameObjects.Graphics;
   private banner!: Phaser.GameObjects.BitmapText;
+  private bossBars!: Phaser.GameObjects.Graphics;
+  private bossName!: Phaser.GameObjects.BitmapText;
+  private bossTimerText!: Phaser.GameObjects.BitmapText;
   private lastSegIndex = -2;
   private zScroll = 0;
+  private debug = false;
 
   constructor() {
     super('Game');
+  }
+
+  init(data: { level?: number }): void {
+    // No saved progress by design — the game is too fast-paced for save
+    // states. Levels are picked on the menu; only settings/identity persist.
+    this.level = Math.min(Math.max(data.level ?? 1, 1), MAX_LEVEL);
   }
 
   create(): void {
@@ -43,16 +92,25 @@ export class GameScene extends Phaser.Scene {
     this.freeUnits = [];
     this.cleanups = [];
     this.over = false;
+    this.won = false;
     this.lastSegIndex = -2;
     this.zScroll = 0;
 
-    const seedParam = new URLSearchParams(window.location.search).get('seed');
+    const params = new URLSearchParams(window.location.search);
+    const seedParam = params.get('seed');
+    this.debug = params.get('debug') === '1';
     const seed = seedParam !== null ? Number(seedParam) >>> 0 : Math.floor(performance.now() * 997) >>> 0;
 
-    const config: EngineConfig = { words, integrity: 5, segments: RAIL, seed };
+    const config: EngineConfig = {
+      wordTiers: WORD_POOLS,
+      integrity: 5,
+      segments: buildRail(this.level),
+      seed,
+    };
     this.engine = new TypingEngine(config);
     this.registry.set('engine', this.engine);
     this.registry.set('seed', seed);
+    this.registry.set('level', this.level);
 
     this.grid = this.add.graphics().setDepth(1);
     this.drawCockpit();
@@ -60,6 +118,19 @@ export class GameScene extends Phaser.Scene {
       .bitmapText(FIELD_WIDTH / 2, 150, FONT_KEY, '', 30)
       .setOrigin(0.5)
       .setDepth(600);
+    this.bossBars = this.add.graphics().setDepth(610);
+    this.bossName = this.add
+      .bitmapText(FIELD_WIDTH / 2, 56, FONT_KEY, '', 24)
+      .setOrigin(0.5)
+      .setDepth(611)
+      .setTint(0xf85149)
+      .setVisible(false);
+    this.bossTimerText = this.add
+      .bitmapText(FIELD_WIDTH / 2 + 250, 86, FONT_KEY, '', 18)
+      .setOrigin(0, 0.5)
+      .setDepth(611)
+      .setTint(0xf2cc60)
+      .setVisible(false);
 
     this.wireEngineEvents();
     this.wireInput();
@@ -72,12 +143,14 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  override update(_time: number, delta: number): void {
+  override update(time: number, delta: number): void {
     if (this.over) return;
     this.engine.tick(delta);
     const snap = this.engine.snapshot();
+    if (this.debug) (window as unknown as { __snap?: EngineState }).__snap = snap;
     this.syncSegmentBanner(snap);
     this.drawRail(delta, snap.phase === 'travel');
+    this.drawBossUI(snap);
     for (const enemy of snap.enemies) {
       const scale = FOCAL / (FOCAL + enemy.z);
       // Lateral spread is deliberately flatter than true perspective so words
@@ -85,7 +158,7 @@ export class GameScene extends Phaser.Scene {
       const xScale = 0.35 + 0.65 * scale;
       const x = FIELD_WIDTH / 2 + enemy.lateral * SPREAD * xScale;
       const y = HORIZON_Y + (BOTTOM_Y - HORIZON_Y) * scale;
-      this.units.get(enemy.id)?.project(x, y, scale);
+      this.units.get(enemy.id)?.project(x, y, scale, enemy.z, time);
     }
   }
 
@@ -101,7 +174,35 @@ export class GameScene extends Phaser.Scene {
     } else if (snap.phase === 'encounter') {
       this.banner.setText('!! MUTANTS DETECTED !!').setTint(0xf85149).setAlpha(1);
       this.tweens.add({ targets: this.banner, alpha: 0, delay: 1000, duration: 500 });
+    } else if (snap.phase === 'boss') {
+      this.banner
+        .setText(`!! BOSS: ${snap.boss?.name ?? ''} — type the sentence (_ is a space) !!`)
+        .setTint(0xf85149)
+        .setAlpha(1);
+      this.tweens.add({ targets: this.banner, alpha: 0, delay: 2200, duration: 600 });
     }
+  }
+
+  private drawBossUI(snap: EngineState): void {
+    const g = this.bossBars;
+    g.clear();
+    if (!snap.boss) {
+      this.bossName.setVisible(false);
+      this.bossTimerText.setVisible(false);
+      return;
+    }
+    const width = 460;
+    const x = FIELD_WIDTH / 2 - width / 2;
+    this.bossName.setVisible(true).setText(`BOSS: ${snap.boss.name}`);
+    // health bar — sentence progress is damage
+    g.fillStyle(0x21262d, 1).fillRect(x, 72, width, 12);
+    g.fillStyle(0xf85149, 1).fillRect(x, 72, width * snap.boss.hpFrac, 12);
+    g.lineStyle(1, 0x8b949e, 0.8).strokeRect(x, 72, width, 12);
+    // kill timer
+    const frac = snap.boss.timeLimitMs > 0 ? snap.boss.timeLeftMs / snap.boss.timeLimitMs : 0;
+    g.fillStyle(0x21262d, 1).fillRect(x, 90, width, 7);
+    g.fillStyle(frac < 0.25 ? 0xf85149 : 0xf2cc60, 1).fillRect(x, 90, width * frac, 7);
+    this.bossTimerText.setVisible(true).setText(`${(snap.boss.timeLeftMs / 1000).toFixed(1)}s`);
   }
 
   private drawRail(delta: number, travelling: boolean): void {
@@ -136,11 +237,19 @@ export class GameScene extends Phaser.Scene {
       .setTint(0x58a6ff);
   }
 
+  private audio(): AudioBus {
+    return this.registry.get('audio') as AudioBus;
+  }
+
   private wireEngineEvents(): void {
     this.cleanups.push(
       this.engine.on('spawn', ({ enemy }) => {
         const unit = this.freeUnits.pop() ?? new EnemySprite(this);
-        unit.activate(enemy.id, enemy.word);
+        unit.activate(
+          enemy.id,
+          enemy.word,
+          enemy.type === 'boss' ? { design: 'toothy-red', sizeFactor: 1.9 } : undefined,
+        );
         this.units.set(enemy.id, unit);
       }),
       this.engine.on('lock', ({ enemyId }) => {
@@ -151,19 +260,31 @@ export class GameScene extends Phaser.Scene {
         if (!unit) return;
         unit.setProgress(letterIndex + 1);
         unit.punch();
+        this.audio().click(letterIndex);
       }),
       this.engine.on('miss', () => {
         this.cameras.main.shake(60, 0.0015);
+        this.audio().miss();
       }),
       this.engine.on('wordComplete', ({ enemyId, score }) => {
         const unit = this.units.get(enemyId);
-        if (unit) this.popScore(unit.rect.x, unit.rect.y, score);
+        if (unit) this.popScore(unit.body.x, unit.body.y, score);
         this.releaseUnit(enemyId, true);
+        this.audio().kill();
       }),
       this.engine.on('coreDamage', ({ enemyId }) => {
         this.releaseUnit(enemyId, false);
         this.cameras.main.flash(140, 248, 81, 73);
         this.cameras.main.shake(140, 0.005);
+        this.audio().survive();
+      }),
+      this.engine.on('bossTimeout', ({ enemyId }) => {
+        const unit = this.units.get(enemyId);
+        unit?.setProgress(0);
+        unit?.clearLocked();
+        this.cameras.main.flash(160, 248, 81, 73);
+        this.cameras.main.shake(160, 0.006);
+        this.audio().survive();
       }),
       this.engine.on('levelWon', () => this.finish(true)),
       this.engine.on('levelLost', () => this.finish(false)),
@@ -179,7 +300,13 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       if (this.over) {
-        if (char === ' ') this.scene.restart();
+        if (char === ' ') {
+          const next = this.won ? (this.level >= MAX_LEVEL ? 1 : this.level + 1) : this.level;
+          this.scene.restart({ level: next });
+        } else if (char.toLowerCase() === 'm') {
+          this.scene.stop('HUD');
+          this.scene.start('Menu');
+        }
         return;
       }
       this.engine.handleKey(char);
@@ -235,19 +362,27 @@ export class GameScene extends Phaser.Scene {
   private finish(won: boolean): void {
     if (this.over) return;
     this.over = true;
+    this.won = won;
 
     const stats = this.engine.stats.finalize();
     const snap = this.engine.snapshot();
     const seed = this.registry.get('seed') as number;
+    const finalLevel = this.level >= MAX_LEVEL;
 
     this.add
       .rectangle(FIELD_WIDTH / 2, FIELD_HEIGHT / 2, FIELD_WIDTH, FIELD_HEIGHT, 0x010409, 0.78)
       .setDepth(640);
-    const title = won ? 'RELEASE GATE REACHED' : 'BUILD BROKEN';
+    const title = won
+      ? finalLevel
+        ? 'YOU SHIPPED v1.0.0'
+        : `LEVEL ${this.level} CLEARED`
+      : 'BUILD BROKEN';
     const titleColor = won ? 0x3fb950 : 0xf85149;
     const mutationScore =
       snap.totalMutants === 0 ? 100 : Math.round((snap.kills / snap.totalMutants) * 100);
+    const user = (this.registry.get('user') as string) || '???';
     const lines = [
+      `PLAYER ${user}`,
       `MUTATION SCORE ${mutationScore}%`,
       `WPM ${Math.round(stats.wpm)}`,
       `ACCURACY ${(stats.accuracy * 100).toFixed(1)}%`,
@@ -255,6 +390,11 @@ export class GameScene extends Phaser.Scene {
       `BEST COMBO ${snap.maxCombo}`,
       `SEED ${seed}`,
     ];
+    const prompt = won
+      ? finalLevel
+        ? 'SPACE: PLAY AGAIN    M: MENU'
+        : `SPACE: LEVEL ${this.level + 1}    M: MENU`
+      : 'SPACE: RETRY    M: MENU';
     this.add
       .bitmapText(FIELD_WIDTH / 2, 190, FONT_KEY, title, 52)
       .setOrigin(0.5)
@@ -266,7 +406,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(641)
       .setCenterAlign();
     this.add
-      .bitmapText(FIELD_WIDTH / 2, 580, FONT_KEY, 'PRESS SPACE TO RETRY', 22)
+      .bitmapText(FIELD_WIDTH / 2, 640, FONT_KEY, prompt, 22)
       .setOrigin(0.5)
       .setDepth(641)
       .setTint(0x8b949e);

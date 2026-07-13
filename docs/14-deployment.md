@@ -84,6 +84,7 @@ the cache headers, an `.htaccess`:
 
 | Platform | Setup |
 |---|---|
+| **Vercel** ← LIVE | Deployed 2026-07-08: project `keyboardhero` under the `friendsips-projects` scope, production alias **https://keyboardhero.vercel.app**. Redeploy with `vercel --prod --yes --scope friendsips-projects` from the repo root (CLI already authenticated), or connect the GitHub repo in the Vercel dashboard for auto-deploy on push. Build runs `npm run build` (tsc + vite), output `dist/`, auto-detected. |
 | **Cloudflare Pages / Netlify** | Connect the GitHub repo; build command `npm run build`, output directory `dist`. Auto-deploys on push; both apply sane caching + brotli automatically. |
 | **GitHub Pages** | Workflow below. Serves at `https://<user>.github.io/<repo>/` — works because of `base: './'`. |
 

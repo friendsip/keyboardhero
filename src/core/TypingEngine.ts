@@ -23,22 +23,49 @@ export type RailSegment =
   | { kind: 'travel'; durationMs: number; label: string }
   | {
       kind: 'encounter';
+      /** Word-length difficulty tier (1-based index into wordTiers). */
+      tier: number;
       mutants: number;
       spawnIntervalMs: number;
       maxLive: number;
       speedMin: number;
       speedMax: number;
+    }
+  | {
+      /**
+       * A single boss mutant carrying a whole sentence. It does not
+       * approach — it weaves around mid-corridor while a kill timer runs.
+       * Timer expiry costs build integrity and resets the sentence.
+       */
+      kind: 'boss';
+      name: string;
+      sentence: string;
+      timeLimitMs: number;
     };
 
+const BOSS_TIMEOUT_DAMAGE = 2;
+const BOSS_Z_MID = 420;
+const BOSS_Z_SWING = 150;
+const BOSS_LATERAL_SWING = 0.55;
+
 export interface EngineConfig {
-  words: string[];
+  /** Word pools by difficulty tier: tier1 = 2–3 letters … tier5 = 8+. */
+  wordTiers: string[][];
   integrity: number;
   segments: RailSegment[];
   seed: number;
   caseSensitive?: boolean;
 }
 
-export type EnginePhase = 'travel' | 'encounter' | 'won' | 'lost';
+export type EnginePhase = 'travel' | 'encounter' | 'boss' | 'won' | 'lost';
+
+export interface BossSnapshot {
+  name: string;
+  timeLeftMs: number;
+  timeLimitMs: number;
+  /** 1 = untouched, 0 = dead; driven by sentence progress. */
+  hpFrac: number;
+}
 
 export interface EngineState {
   enemies: EnemySnapshot[];
@@ -54,10 +81,12 @@ export interface EngineState {
   segIndex: number;
   segmentCount: number;
   travelLabel: string | null;
+  boss: BossSnapshot | null;
 }
 
 interface Enemy {
   id: string;
+  kind: 'mutant' | 'boss';
   word: string;
   progress: number;
   lateral: number;
@@ -90,14 +119,16 @@ export class TypingEngine {
   private travelRemainingMs = 0;
   private spawnClockMs = 0;
   private spawnedInEncounter = 0;
+  private bossTimeLeftMs = 0;
+  private bossClockMs = 0;
   private nextId = 1;
 
   constructor(private readonly config: EngineConfig) {
     this.rng = mulberry32(config.seed);
-    this.bank = new WordBank(config.words, this.rng);
+    this.bank = new WordBank(config.wordTiers, this.rng);
     this.integrity = config.integrity;
     this.totalMutants = config.segments.reduce(
-      (sum, seg) => sum + (seg.kind === 'encounter' ? seg.mutants : 0),
+      (sum, seg) => sum + (seg.kind === 'encounter' ? seg.mutants : seg.kind === 'boss' ? 1 : 0),
       0,
     );
     this.advanceSegment();
@@ -112,7 +143,7 @@ export class TypingEngine {
 
   /** Keys only matter mid-fight; travel typing is ignored, never punished. */
   handleKey(rawChar: string): void {
-    if (this.phase !== 'encounter') return;
+    if (this.phase !== 'encounter' && this.phase !== 'boss') return;
     const char = this.fold(rawChar);
 
     const lockedId = this.lock.lockedId;
@@ -160,6 +191,16 @@ export class TypingEngine {
 
   snapshot(): EngineState {
     const seg = this.config.segments[this.segIndex];
+    const bossEnemy = this.enemies[0];
+    const boss: BossSnapshot | null =
+      this.phase === 'boss' && seg?.kind === 'boss'
+        ? {
+            name: seg.name,
+            timeLeftMs: Math.max(this.bossTimeLeftMs, 0),
+            timeLimitMs: seg.timeLimitMs,
+            hpFrac: bossEnemy ? 1 - bossEnemy.progress / bossEnemy.word.length : 0,
+          }
+        : null;
     return {
       enemies: this.enemies.map((e) => this.snapshotEnemy(e)),
       integrity: this.integrity,
@@ -174,6 +215,7 @@ export class TypingEngine {
       segIndex: this.segIndex,
       segmentCount: this.config.segments.length,
       travelLabel: seg?.kind === 'travel' ? seg.label : null,
+      boss,
     };
   }
 
@@ -195,12 +237,45 @@ export class TypingEngine {
       this.stepTravel();
       return;
     }
-    // encounter: combat time only — travel time never dilutes WPM
+    // combat time only — travel time never dilutes WPM
     this.activeMs += STEP_MS;
     this.stats.addActiveTime(STEP_MS);
+    if (this.phase === 'boss') {
+      this.stepBoss();
+      return;
+    }
     this.stepSpawn();
     this.stepEnemies();
     this.checkEncounterCleared();
+  }
+
+  private stepBoss(): void {
+    const seg = this.config.segments[this.segIndex];
+    if (seg?.kind !== 'boss') return;
+    const boss = this.enemies[0];
+    if (!boss) {
+      this.advanceSegment(); // sentence finished — boss is dead
+      return;
+    }
+    this.bossClockMs += STEP_MS;
+    this.bossTimeLeftMs -= STEP_MS;
+    // The boss weaves around mid-corridor instead of approaching.
+    const t = this.bossClockMs / 1000;
+    boss.lateral = Math.sin(t * 0.9) * BOSS_LATERAL_SWING;
+    boss.z = BOSS_Z_MID + Math.sin(t * 0.5 + 1.3) * BOSS_Z_SWING;
+    if (this.bossTimeLeftMs > 0) return;
+    // Timer expired: the build takes a hit and the sentence resets.
+    this.integrity -= BOSS_TIMEOUT_DAMAGE;
+    boss.progress = 0;
+    boss.missesWhileLocked = 0;
+    this.lock.release();
+    this.bossTimeLeftMs = seg.timeLimitMs;
+    this.breakCombo();
+    this.emitter.emit({ type: 'bossTimeout', enemyId: boss.id, integrityLeft: this.integrity });
+    if (this.integrity <= 0) {
+      this.phase = 'lost';
+      this.emitter.emit({ type: 'levelLost' });
+    }
   }
 
   private stepTravel(): void {
@@ -220,6 +295,12 @@ export class TypingEngine {
       this.phase = 'travel';
       this.travelRemainingMs = seg.durationMs;
       this.emitter.emit({ type: 'segmentStart', index: this.segIndex, kind: 'travel', label: seg.label });
+    } else if (seg.kind === 'boss') {
+      this.phase = 'boss';
+      this.bossTimeLeftMs = seg.timeLimitMs;
+      this.bossClockMs = 0;
+      this.addEnemy(seg.sentence, 0, 0, BOSS_Z_MID, 0, 'boss');
+      this.emitter.emit({ type: 'segmentStart', index: this.segIndex, kind: 'boss', label: seg.name });
     } else {
       this.phase = 'encounter';
       this.spawnClockMs = 0;
@@ -239,7 +320,7 @@ export class TypingEngine {
     this.spawnClockMs += STEP_MS;
     if (this.spawnClockMs < seg.spawnIntervalMs) return;
     if (this.enemies.length >= seg.maxLive) return;
-    const word = this.bank.take(this.reservedFirstLetters());
+    const word = this.bank.take(seg.tier, this.reservedFirstLetters());
     if (word === null) return; // starved this step; retry next step
     this.spawnClockMs = 0;
     const lane = this.pickLane();
@@ -319,9 +400,17 @@ export class TypingEngine {
     this.emitter.emit({ type: 'comboBreak', was });
   }
 
-  private addEnemy(word: string, lateral: number, lane: number, z: number, speed: number): Enemy {
+  private addEnemy(
+    word: string,
+    lateral: number,
+    lane: number,
+    z: number,
+    speed: number,
+    kind: 'mutant' | 'boss' = 'mutant',
+  ): Enemy {
     const enemy: Enemy = {
       id: `e${this.nextId++}`,
+      kind,
       word,
       progress: 0,
       lateral,
@@ -352,7 +441,7 @@ export class TypingEngine {
   private snapshotEnemy(e: Enemy): EnemySnapshot {
     return {
       id: e.id,
-      type: 'mutant',
+      type: e.kind,
       lateral: e.lateral,
       z: e.z,
       word: e.word,

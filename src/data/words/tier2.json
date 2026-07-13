@@ -1,0 +1,7 @@
+[
+  "atom", "byte", "code", "data", "diff", "exec", "flag", "grep", "hash",
+  "heap", "html", "init", "json", "kill", "lint", "loop", "main", "mock",
+  "node", "null", "perf", "port", "push", "quit", "repo", "root", "scan",
+  "spec", "stub", "sync", "test", "tree", "type", "undo", "unit", "void",
+  "wasm", "yaml", "zero"
+]

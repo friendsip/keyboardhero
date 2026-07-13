@@ -4,16 +4,25 @@
 
 ### Requirements
 
-- Tiered built-in pools (`tier1.json` … `tier5.json`): tier 1 = 2–4
-  letters, tier 2 = 4–6, tier 3 = 6–8, tier 4 = 8–11, tier 5 = 11+ /
-  multi-word. All lowercase ASCII. Themed packs (e.g. `network.json`) are
-  extra pools levels can reference by name; level JSON can embed inline
-  custom pools.
+- Tiered built-in pools (`tier1.json` … `tier5.json`), graded purely by
+  word length so difficulty ramps letter-by-letter: **tier 1 = 2–3
+  letters, tier 2 = 4, tier 3 = 5, tier 4 = 6–7, tier 5 = 8+.** All
+  lowercase ASCII, hand-authored programmer/testing vocabulary (they are
+  plain JSON — extend freely; keep ≥ 15 distinct first letters per tier).
+  Themed packs (e.g. `network.json`) are extra pools levels can reference
+  by name; level JSON can embed inline custom pools.
+- Each encounter segment declares its `tier` (doc 12); the shipped rail
+  climbs one tier per fight.
 - **Shuffle-bag selection**, not uniform random: shuffle a copy of the pool
   (with the injected `Rng`), deal from it, reshuffle when empty. Uniform
   random repeats words back-to-back often enough that players notice within
-  one level.
-- API: `take(poolId, tier, excludedFirstLetters: Set<string>): string | null`.
+  one level. Each tier keeps its own bag.
+- API: `take(tier, excludedFirstLetters: Set<string>): string | null`.
+  **Tier-starvation fallback:** if every eligible first letter in the
+  requested tier is reserved, `take` falls back to the nearest tier
+  (harder first: t+1, t−1, t+2, …) instead of stalling the spawner —
+  small tier pools plus 5–7 live enemies make this a real case, not a
+  theoretical one.
 
 ### The unique-first-letter invariant
 

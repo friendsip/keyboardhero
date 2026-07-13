@@ -6,6 +6,7 @@ import type { EngineEvent } from '../src/core/events';
 /** An encounter that never auto-spawns and never clears — a blank arena for debugSpawn. */
 const IDLE_ARENA: RailSegment = {
   kind: 'encounter',
+  tier: 1,
   mutants: 999,
   spawnIntervalMs: 1_000_000_000,
   maxLive: 9,
@@ -15,7 +16,7 @@ const IDLE_ARENA: RailSegment = {
 
 function makeEngine(overrides: Partial<EngineConfig> = {}): TypingEngine {
   return new TypingEngine({
-    words: ['alpha', 'bravo', 'cargo', 'delta', 'echo'],
+    wordTiers: [['alpha', 'bravo', 'cargo', 'delta', 'echo']],
     integrity: 5,
     segments: [IDLE_ARENA],
     seed: 42,
@@ -194,7 +195,7 @@ describe('rail segments', () => {
     const engine = makeEngine({
       segments: [
         { kind: 'travel', durationMs: 100, label: 'lib/utils/' },
-        { kind: 'encounter', mutants: 1, spawnIntervalMs: 50, maxLive: 3, speedMin: 0, speedMax: 0 },
+        { kind: 'encounter', tier: 1, mutants: 1, spawnIntervalMs: 50, maxLive: 3, speedMin: 0, speedMax: 0 },
         { kind: 'travel', durationMs: 100, label: 'release gate' },
       ],
     });
@@ -217,6 +218,19 @@ describe('rail segments', () => {
     expect(log.map((e) => e.type)).toEqual(['segmentStart', 'segmentStart', 'levelWon']);
   });
 
+  it('encounters draw words from their declared tier', () => {
+    const engine = makeEngine({
+      wordTiers: [['ab', 'cd', 'ef'], ['wxyz', 'stuv', 'qrst']],
+      segments: [
+        { kind: 'encounter', tier: 2, mutants: 3, spawnIntervalMs: 50, maxLive: 3, speedMin: 0, speedMax: 0 },
+      ],
+    });
+    engine.tick(400);
+    const words = engine.snapshot().enemies.map((e) => e.word);
+    expect(words.length).toBeGreaterThan(0);
+    for (const word of words) expect(word.length).toBe(4);
+  });
+
   it('WPM counts combat time only — travel does not dilute it', () => {
     const engine = makeEngine({
       segments: [
@@ -229,13 +243,66 @@ describe('rail segments', () => {
   });
 });
 
+describe('boss fights', () => {
+  const BOSS: RailSegment = { kind: 'boss', name: 'SEGFAULT', sentence: 'fix me now', timeLimitMs: 5000 };
+
+  it('typing the sentence (spaces included) kills the boss and wins the rail', () => {
+    const engine = makeEngine({ segments: [BOSS] });
+    const boss = engine.snapshot().enemies[0];
+    expect(boss?.type).toBe('boss');
+    expect(engine.snapshot().boss?.name).toBe('SEGFAULT');
+    typeWord(engine, 'fix me now');
+    expect(engine.snapshot().kills).toBe(1);
+    engine.tick(STEP_MS * 2);
+    expect(engine.snapshot().phase).toBe('won');
+  });
+
+  it('damage shows on the health bar as sentence progress', () => {
+    const engine = makeEngine({ segments: [BOSS] });
+    typeWord(engine, 'fix m'); // 5 of 10 chars
+    expect(engine.snapshot().boss?.hpFrac).toBeCloseTo(0.5);
+  });
+
+  it('weaves around mid-corridor instead of approaching the camera', () => {
+    const engine = makeEngine({ segments: [BOSS] });
+    const before = engine.snapshot().enemies[0];
+    engine.tick(2000);
+    const after = engine.snapshot().enemies[0];
+    expect(after?.lateral).not.toBe(before?.lateral);
+    expect((after?.z ?? 0) > 200).toBe(true);
+  });
+
+  it('timer expiry damages the build, resets the sentence, and restarts the timer', () => {
+    const engine = makeEngine({ segments: [{ ...BOSS, timeLimitMs: 300 }] });
+    engine.handleKey('f'); // lock + one letter of progress
+    const log = record(engine, ['bossTimeout']);
+    engine.tick(250); // delta is clamped to 250ms per call
+    engine.tick(250);
+    expect(log).toHaveLength(1);
+    const snap = engine.snapshot();
+    expect(snap.integrity).toBe(3); // 5 - 2
+    expect(snap.enemies[0]?.progress).toBe(0);
+    expect(snap.enemies[0]?.locked).toBe(false);
+    expect(snap.boss?.timeLeftMs).toBeGreaterThan(0);
+  });
+
+  it('repeated timeouts break the build', () => {
+    const engine = makeEngine({ segments: [{ ...BOSS, timeLimitMs: 200 }], integrity: 3 });
+    const log = record(engine, ['levelLost']);
+    engine.tick(250);
+    engine.tick(250);
+    expect(log.map((e) => e.type)).toEqual(['levelLost']);
+    expect(engine.snapshot().phase).toBe('lost');
+  });
+});
+
 describe('unique-first-letter invariant and lanes', () => {
   it('holds across scripted spawning under autoplay pressure', () => {
     for (const seed of [1, 7, 1234]) {
       const engine = makeEngine({
-        words: ['alpha', 'apple', 'arrow', 'atlas', 'beta', 'cargo', 'delta'],
+        wordTiers: [['alpha', 'apple', 'arrow', 'atlas', 'beta', 'cargo', 'delta']],
         segments: [
-          { kind: 'encounter', mutants: 30, spawnIntervalMs: 200, maxLive: 6, speedMin: 30, speedMax: 30 },
+          { kind: 'encounter', tier: 1, mutants: 30, spawnIntervalMs: 200, maxLive: 6, speedMin: 30, speedMax: 30 },
         ],
         seed,
       });

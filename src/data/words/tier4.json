@@ -1,0 +1,9 @@
+[
+  "assert", "binary", "branch", "buffer", "commit", "compile", "daemon",
+  "decode", "expect", "fixture", "getter", "hotfix", "import", "inline",
+  "jitter", "kernel", "lambda", "linter", "logger", "malloc", "method",
+  "module", "mutant", "mutate", "nested", "object", "opcode", "oracle",
+  "parser", "pointer", "private", "public", "quorum", "rebase", "runner",
+  "runtime", "setter", "socket", "static", "syntax", "thread", "triage",
+  "upload", "vector", "verify", "warning", "watcher", "wrapper", "zombie"
+]

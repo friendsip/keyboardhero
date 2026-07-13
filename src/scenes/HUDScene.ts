@@ -10,15 +10,19 @@ export class HUDScene extends Phaser.Scene {
   private integrityText!: Phaser.GameObjects.BitmapText;
   private threatsText!: Phaser.GameObjects.BitmapText;
   private railText!: Phaser.GameObjects.BitmapText;
+  private playerText!: Phaser.GameObjects.BitmapText;
 
   constructor() {
     super('HUD');
   }
 
   create(): void {
+    const logo = this.add.image(640, 26, 'wemutate-logo').setAlpha(0.9);
+    logo.setScale(150 / logo.width);
     this.wpmText = this.add.bitmapText(24, 16, FONT_KEY, 'WPM --', 26).setTint(0x58a6ff);
     this.accText = this.add.bitmapText(24, 52, FONT_KEY, 'ACC 100.0%', 20).setTint(0x9198a1);
     this.comboText = this.add.bitmapText(24, 82, FONT_KEY, '', 20).setTint(0xf2cc60);
+    this.playerText = this.add.bitmapText(24, 112, FONT_KEY, '', 18).setTint(0x8b949e);
     this.scoreText = this.add
       .bitmapText(1256, 16, FONT_KEY, 'SCORE 0', 26)
       .setOrigin(1, 0)
@@ -48,7 +52,11 @@ export class HUDScene extends Phaser.Scene {
     this.comboText.setText(snap.combo > 0 ? `COMBO ${snap.combo}  x${snap.comboMult}` : '');
     this.scoreText.setText(`SCORE ${snap.score}`);
     this.threatsText.setText(`MUTANTS ${snap.mutantsRemaining}`);
-    this.railText.setText(`RAIL ${Math.min(snap.segIndex + 1, snap.segmentCount)}/${snap.segmentCount}`);
+    this.playerText.setText(`PLAYER ${((this.registry.get('user') as string) || '???')}`);
+    const level = (this.registry.get('level') as number | undefined) ?? 1;
+    this.railText.setText(
+      `LVL ${level}  RAIL ${Math.min(snap.segIndex + 1, snap.segmentCount)}/${snap.segmentCount}`,
+    );
     this.integrityText.setText(`BUILD ${'#'.repeat(Math.max(snap.integrity, 0))}`);
     this.integrityText.setTint(snap.integrity <= 2 ? 0xf85149 : 0x3fb950);
   }

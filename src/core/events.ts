@@ -12,7 +12,8 @@ export interface EnemySnapshot {
 
 export type EngineEvent =
   | { type: 'spawn'; enemy: EnemySnapshot }
-  | { type: 'segmentStart'; index: number; kind: 'travel' | 'encounter'; label?: string }
+  | { type: 'segmentStart'; index: number; kind: 'travel' | 'encounter' | 'boss'; label?: string }
+  | { type: 'bossTimeout'; enemyId: string; integrityLeft: number }
   | { type: 'lock'; enemyId: string }
   | { type: 'hit'; enemyId: string; letterIndex: number; char: string }
   | { type: 'miss'; expected: string | null; got: string }

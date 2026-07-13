@@ -21,6 +21,16 @@ deterministic run. Verified in headless Chromium with a clean console.
 | Rail model (doc 12) | `RailSegment` travel/encounter segments; lateral lane system; depth-based movement (`SPAWN_Z`→`ATTACK_Z`); combat-time-only stats; travel keystrokes ignored not punished |
 | Input (doc 03) | Full keydown filter table (repeat, modifiers, IME, Dead keys, Firefox `'`/`/` quick-find, space scroll), `KeyRouter` yielding to focused form fields |
 | Render layer | Pseudo-3D projection with lateral-flattening cheat, per-frame floor grid, runtime-generated bitmap font (per-letter tint: typed/next/remaining), pooled `EnemySprite`s with reset hygiene, depth sorting, punch/kill/score FX |
+| Creatures | Four procedural canvas-drawn mutant designs (glob, crawler, wraith, maw — `fx/CreatureTextures.ts`) with baked shading + glowing red eyes; per-creature breathing/sway animation, close-range jitter, proximity glow underlay, lock ring, white hit-flash. Art is swappable later by replacing the texture keys with PNGs |
+| Word tiers | Hand-authored pools in `src/data/words/` graded by exact length (`pools.ts`: singles / 2 / 3 / 4 / 5 / 6–7 / 8+); WordBank keeps a shuffle-bag per tier with nearest-tier fallback on starvation |
+| Levels | Six levels, one word length each (L1 = 2 letters … L6 = 8+); every level's rail is two main waves plus a single-letter **micro-mutant swarm**; progress saved to localStorage; level select (1–6) on the menu |
+| Sound | Procedural WebAudio SFX (`fx/AudioBus.ts`, no assets): per-keystroke click with rising pitch, miss thud, kill arpeggio, "mutant survived" falling alarm; toggle on the menu, **default OFF**, preference persisted |
+| Menu & branding | Intro screen with wemutate logo, instructions, sound toggle, level select, bobbing toothy mutants; logo in the game HUD; toothy green/red PNGs (`public/assets/`) joined the creature design mix |
+| Players | Arcade-style 3-letter initials, entered/edited on the menu (first launch prompts), shown in HUD and on results; persisted as `ttf.user`. **No game-save by design** — too fast-paced; only identity + sound settings persist |
+| Bosses | Every level ends in a boss: one big mutant (toothy-red, 1.9×) carrying a whole sentence ("mutants break your code to make it stronger"), weaving mid-corridor instead of approaching; HUD shows boss name, health bar (sentence progress = damage) and a kill timer — expiry costs 2 build integrity and resets the sentence. Six named bosses (SEGFAULT → THE SURVIVOR), engine-tested incl. timeout/lose paths |
+| Debug hook | `?debug=1` exposes the engine snapshot on `window.__snap` — used by the Playwright autoplay smoke tests |
+
+**Scoped, not built** (design in [15-scores-and-sharing.md](15-scores-and-sharing.md)): permanent high-score table (local first, global later with server-side re-simulation for cheat resistance) and score sharing (downloadable score-card image + mailto email).
 | Scenes | Boot, Game, HUD (WPM/ACC/combo/score/MUTANTS/RAIL/BUILD), Pause (blur + visibility auto-pause), win/lose overlay with mutation score |
 | Theme | "Kill the Mutants" (mutation testing) across docs, word pools, UI |
 | Tests (38) | Engine behavior, same-step races, rail progression, invariant + lane fuzz, stats fixtures, input filter table, golden determinism snapshot |

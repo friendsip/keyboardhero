@@ -1,0 +1,8 @@
+[
+  "assertion", "boundary", "callback", "coverage", "database", "deadlock",
+  "exception", "function", "generator", "heisenbug", "interface",
+  "iterator", "junction", "keyboard", "lifecycle", "mutation", "override",
+  "pipeline", "protocol", "quicksort", "recursion", "refactor", "registry",
+  "regression", "snapshot", "template", "terminal", "undefined",
+  "upstream", "validator", "variable", "whitespace"
+]
