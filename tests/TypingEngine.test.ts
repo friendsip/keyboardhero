@@ -257,6 +257,13 @@ describe('boss fights', () => {
     expect(engine.snapshot().phase).toBe('won');
   });
 
+  it('accepts the underscore key as a space (so both work at a gap)', () => {
+    const engine = makeEngine({ segments: [BOSS] });
+    typeWord(engine, 'fix_me_now'); // player presses '_' instead of space
+    expect(engine.snapshot().kills).toBe(1);
+    expect(engine.accuracy()).toBe(1); // underscores counted as correct, not misses
+  });
+
   it('damage shows on the health bar as sentence progress', () => {
     const engine = makeEngine({ segments: [BOSS] });
     typeWord(engine, 'fix m'); // 5 of 10 chars

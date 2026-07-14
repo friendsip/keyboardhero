@@ -13,6 +13,14 @@ const BOTTOM_Y = 636;
 const FOCAL = 260;
 const SPREAD = 620;
 const ROW_SPACING = 160; // z-units between floor grid lines
+// Full arrow-key yaw lets you centre a mutant this far off to the side (lateral
+// units); it comfortably covers the widest level-6 spawns.
+const YAW_RANGE = 2.7;
+
+/** Mutants fan out wider each level; by level 3 they arrive from the sides. */
+function spreadForLevel(level: number): number {
+  return Math.min(1 + (level - 1) * 0.42, 2.6);
+}
 
 const LEVEL_MODULES = [
   'lib/utils/',
@@ -73,9 +81,15 @@ export class GameScene extends Phaser.Scene {
   private bossBars!: Phaser.GameObjects.Graphics;
   private bossName!: Phaser.GameObjects.BitmapText;
   private bossTimerText!: Phaser.GameObjects.BitmapText;
+  private leftArrow!: Phaser.GameObjects.BitmapText;
+  private rightArrow!: Phaser.GameObjects.BitmapText;
   private lastSegIndex = -2;
   private zScroll = 0;
   private debug = false;
+  /** Camera yaw from the arrow keys, -1 (look left) .. 1 (look right). */
+  private viewYaw = 0;
+  private viewHeading = 0;
+  private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
 
   constructor() {
     super('Game');
@@ -95,6 +109,10 @@ export class GameScene extends Phaser.Scene {
     this.won = false;
     this.lastSegIndex = -2;
     this.zScroll = 0;
+    this.viewYaw = 0;
+    this.viewHeading = 0;
+    this.cursors = this.input.keyboard?.createCursorKeys();
+    this.input.keyboard?.addCapture(['LEFT', 'RIGHT']);
 
     const params = new URLSearchParams(window.location.search);
     const seedParam = params.get('seed');
@@ -106,6 +124,7 @@ export class GameScene extends Phaser.Scene {
       integrity: 5,
       segments: buildRail(this.level),
       seed,
+      lateralSpread: spreadForLevel(this.level),
     };
     this.engine = new TypingEngine(config);
     this.registry.set('engine', this.engine);
@@ -118,6 +137,20 @@ export class GameScene extends Phaser.Scene {
       .bitmapText(FIELD_WIDTH / 2, 150, FONT_KEY, '', 30)
       .setOrigin(0.5)
       .setDepth(600);
+    // Edge cues that a mutant is off-screen to the side — turn to face it.
+    this.leftArrow = this.add
+      .bitmapText(28, 360, FONT_KEY, '<<', 40)
+      .setOrigin(0, 0.5)
+      .setDepth(605)
+      .setTint(0xf85149)
+      .setVisible(false);
+    this.rightArrow = this.add
+      .bitmapText(FIELD_WIDTH - 28, 360, FONT_KEY, '>>', 40)
+      .setOrigin(1, 0.5)
+      .setDepth(605)
+      .setTint(0xf85149)
+      .setVisible(false);
+    this.tweens.add({ targets: [this.leftArrow, this.rightArrow], alpha: 0.3, duration: 450, yoyo: true, repeat: -1 });
     this.bossBars = this.add.graphics().setDepth(610);
     this.bossName = this.add
       .bitmapText(FIELD_WIDTH / 2, 56, FONT_KEY, '', 24)
@@ -148,18 +181,42 @@ export class GameScene extends Phaser.Scene {
     this.engine.tick(delta);
     const snap = this.engine.snapshot();
     if (this.debug) (window as unknown as { __snap?: EngineState }).__snap = snap;
+    this.updateViewYaw(delta);
     this.syncSegmentBanner(snap);
     this.drawRail(delta, snap.phase === 'travel');
     this.drawBossUI(snap);
+    // Yaw is a heading in lateral units: turning brings side mutants to centre.
+    const heading = this.viewYaw * YAW_RANGE;
+    let offLeft = 0;
+    let offRight = 0;
     for (const enemy of snap.enemies) {
       const scale = FOCAL / (FOCAL + enemy.z);
       // Lateral spread is deliberately flatter than true perspective so words
       // in adjacent lanes stay readable near the horizon (docs/12).
       const xScale = 0.35 + 0.65 * scale;
-      const x = FIELD_WIDTH / 2 + enemy.lateral * SPREAD * xScale;
+      const x = FIELD_WIDTH / 2 + (enemy.lateral - heading) * SPREAD * xScale;
       const y = HORIZON_Y + (BOTTOM_Y - HORIZON_Y) * scale;
       this.units.get(enemy.id)?.project(x, y, scale, enemy.z, time);
+      if (x < 30) offLeft++;
+      else if (x > FIELD_WIDTH - 30) offRight++;
     }
+    this.updateEdgeArrows(offLeft, offRight);
+  }
+
+  private updateViewYaw(delta: number): void {
+    const dt = delta / 1000;
+    const left = this.cursors?.left.isDown ?? false;
+    const right = this.cursors?.right.isDown ?? false;
+    if (left && !right) this.viewYaw -= 1.8 * dt;
+    else if (right && !left) this.viewYaw += 1.8 * dt;
+    else this.viewYaw *= Math.max(0, 1 - 1.6 * dt); // gently ease back to centre
+    this.viewYaw = Math.max(-1, Math.min(1, this.viewYaw));
+    this.viewHeading = this.viewYaw * YAW_RANGE;
+  }
+
+  private updateEdgeArrows(offLeft: number, offRight: number): void {
+    this.leftArrow.setVisible(offLeft > 0);
+    this.rightArrow.setVisible(offRight > 0);
   }
 
   private syncSegmentBanner(snap: EngineState): void {
@@ -172,14 +229,14 @@ export class GameScene extends Phaser.Scene {
         .setTint(0x58a6ff)
         .setAlpha(1);
     } else if (snap.phase === 'encounter') {
-      this.banner.setText('!! MUTANTS DETECTED !!').setTint(0xf85149).setAlpha(1);
-      this.tweens.add({ targets: this.banner, alpha: 0, delay: 1000, duration: 500 });
+      this.banner.setText('There are mutations in your codebase!').setTint(0xf85149).setAlpha(1);
+      this.tweens.add({ targets: this.banner, alpha: 0, delay: 1400, duration: 500 });
     } else if (snap.phase === 'boss') {
       this.banner
-        .setText(`!! BOSS: ${snap.boss?.name ?? ''} — type the sentence (_ is a space) !!`)
+        .setText(`!! BOSS: ${snap.boss?.name ?? ''} — type the whole sentence, spaces and all !!`)
         .setTint(0xf85149)
         .setAlpha(1);
-      this.tweens.add({ targets: this.banner, alpha: 0, delay: 2200, duration: 600 });
+      this.tweens.add({ targets: this.banner, alpha: 0, delay: 2600, duration: 600 });
     }
   }
 
@@ -212,8 +269,12 @@ export class GameScene extends Phaser.Scene {
     g.lineStyle(2, 0x1f6feb, 0.35);
     g.lineBetween(0, HORIZON_Y, FIELD_WIDTH, HORIZON_Y);
     g.lineStyle(1, 0x1f6feb, 0.12);
+    // Grid turns with the view: far vanishing point moves a little, the near
+    // floor edges move a lot — that parallax reads as rotation.
+    const heading = this.viewHeading;
+    const apexX = FIELD_WIDTH / 2 - heading * SPREAD * 0.35;
     for (let lateral = -1.2; lateral <= 1.21; lateral += 0.3) {
-      g.lineBetween(FIELD_WIDTH / 2, HORIZON_Y, FIELD_WIDTH / 2 + lateral * SPREAD * 1.35, FIELD_HEIGHT);
+      g.lineBetween(apexX, HORIZON_Y, FIELD_WIDTH / 2 + (lateral - heading) * SPREAD * 1.35, FIELD_HEIGHT);
     }
     for (let i = 0; i < 14; i++) {
       const z = i * ROW_SPACING - this.zScroll;
@@ -248,7 +309,7 @@ export class GameScene extends Phaser.Scene {
         unit.activate(
           enemy.id,
           enemy.word,
-          enemy.type === 'boss' ? { design: 'toothy-red', sizeFactor: 1.9 } : undefined,
+          enemy.type === 'boss' ? { design: 'toothy-red', sizeFactor: 1.9, boss: true } : undefined,
         );
         this.units.set(enemy.id, unit);
       }),

@@ -55,6 +55,12 @@ export interface EngineConfig {
   segments: RailSegment[];
   seed: number;
   caseSensitive?: boolean;
+  /**
+   * Multiplies lane lateral offsets so mutants spawn across a wider arc as
+   * levels climb — at high spread they arrive from the sides and the player
+   * must yaw (arrow keys) to find them. Default 1 (all in the front view).
+   */
+  lateralSpread?: number;
 }
 
 export type EnginePhase = 'travel' | 'encounter' | 'boss' | 'won' | 'lost';
@@ -324,7 +330,8 @@ export class TypingEngine {
     if (word === null) return; // starved this step; retry next step
     this.spawnClockMs = 0;
     const lane = this.pickLane();
-    const lateral = lane + floatInRange(this.rng, -LANE_JITTER, LANE_JITTER);
+    const spread = this.config.lateralSpread ?? 1;
+    const lateral = lane * spread + floatInRange(this.rng, -LANE_JITTER, LANE_JITTER);
     const speed = floatInRange(this.rng, seg.speedMin, seg.speedMax);
     this.addEnemy(word, lateral, lane, SPAWN_Z, speed);
     this.spawnedInEncounter++;
@@ -451,6 +458,9 @@ export class TypingEngine {
   }
 
   private fold(s: string): string {
-    return this.config.caseSensitive ? s : s.toLowerCase();
+    // Treat '_' as a space: boss sentences show gaps, and players may press
+    // either the space bar or underscore — both must match a space (docs/05).
+    const spaced = s === '_' ? ' ' : s;
+    return this.config.caseSensitive ? spaced : spaced.toLowerCase();
   }
 }

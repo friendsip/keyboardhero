@@ -28,7 +28,7 @@ export class HowToScene extends Phaser.Scene {
       'do not let mutants reach the BUILD',
       '',
       'each level ends with a BOSS carrying a whole sentence',
-      'kill it before the timer runs out - _ means the space bar',
+      'kill it before the timer runs out - type the spaces too',
       '',
       'on the menu: press 1-6 to pick a level (word length,',
       '2 letters up to long words), S toggles sound',

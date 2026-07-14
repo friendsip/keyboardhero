@@ -77,13 +77,11 @@ export class MenuScene extends Phaser.Scene {
 
     const cx = FIELD_WIDTH / 2;
 
-    const logo = this.add.image(cx, 86, 'wemutate-logo-w3');
-    logo.setScale(380 / logo.width);
+    const logo = this.add.image(cx, 44, 'wemutate-logo-w3');
+    logo.setScale(190 / logo.width);
 
-    this.add
-      .bitmapText(cx, 178, FONT_KEY, 'NIGHT OF THE LIVING MUTANT', 40)
-      .setOrigin(0.5)
-      .setTint(0x3fb950);
+    const title = this.add.image(cx, 210, 'night-title');
+    title.setScale(290 / title.height);
 
     for (const [key, x] of [['toothy-green', 128], ['toothy-red', 1152]] as const) {
       const toothy = this.add.image(x, 592, key);
@@ -100,33 +98,33 @@ export class MenuScene extends Phaser.Scene {
     }
 
     this.userText = this.add
-      .bitmapText(cx, 330, FONT_KEY, '', 24)
+      .bitmapText(cx, 420, FONT_KEY, '', 24)
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     this.userText.on('pointerdown', () => this.startUserEdit());
 
     this.fixText = this.add
-      .bitmapText(cx, 378, FONT_KEY, '[ MUTATE AGAIN ]', 20)
+      .bitmapText(cx, 458, FONT_KEY, '[ MUTATE AGAIN ]', 20)
       .setOrigin(0.5)
       .setTint(0xf2cc60)
       .setInteractive({ useHandCursor: true });
     this.fixText.on('pointerdown', () => this.fixUsername());
 
     this.soundText = this.add
-      .bitmapText(cx, 436, FONT_KEY, '', 20)
+      .bitmapText(cx, 500, FONT_KEY, '', 20)
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     this.soundText.on('pointerdown', () => this.toggleSound());
 
     const howText = this.add
-      .bitmapText(cx, 482, FONT_KEY, 'HOW TO PLAY  (press H or click)', 20)
+      .bitmapText(cx, 536, FONT_KEY, 'HOW TO PLAY  (press H or click)', 20)
       .setOrigin(0.5)
       .setTint(0x58a6ff)
       .setInteractive({ useHandCursor: true });
     howText.on('pointerdown', () => this.scene.start('HowTo'));
 
     this.startText = this.add
-      .bitmapText(cx, 628, FONT_KEY, '', 21)
+      .bitmapText(cx, 660, FONT_KEY, '', 21)
       .setOrigin(0.5)
       .setTint(0xf2cc60);
     this.tweens.add({ targets: this.startText, alpha: 0.35, duration: 700, yoyo: true, repeat: -1 });
@@ -226,7 +224,7 @@ export class MenuScene extends Phaser.Scene {
     if (this.userState === 'editing') {
       const slots = (this.baseName + '_'.repeat(NAME_LENGTH)).slice(0, NAME_LENGTH).split('').join(' ');
       this.userText.setText(`SET YOUR USERNAME: ${slots}`).setTint(0xf2cc60);
-      this.startText.setText('TYPE 5 CHARACTERS (LETTERS + NUMBERS), THEN ENTER');
+      this.startText.setText('SET USERNAME AND PRESS ENTER');
     } else if (this.userState === 'mutated') {
       this.userText.setText(`YOUR USERNAME HAS BEEN MUTATED TO: ${this.mutatedName}`).setTint(0x3fb950);
       this.startText.setText('PRESS SPACE TO START');

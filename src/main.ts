@@ -22,6 +22,9 @@ const game = new Phaser.Game({
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
   dom: { createContainer: true },
+  // Resolve asset URLs against the build base so PNGs load whether the game is
+  // served standalone or bundled under the website's /game/ mount.
+  loader: { baseURL: import.meta.env.BASE_URL },
   scene: [BootScene, MenuScene, HowToScene, GameScene, HUDScene, PauseScene],
 });
 

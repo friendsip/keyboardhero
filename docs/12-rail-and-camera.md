@@ -109,6 +109,22 @@ inside encounter blocks. Difficulty estimation (words/sec demanded) now
 applies per encounter, which is *more* accurate than the old whole-level
 estimate.
 
+## View yaw (arrow keys, render-only)
+
+Left/right arrows pan the camera: `GameScene` keeps a `viewYaw` in [-1, 1]
+(held arrows push it, release eases it back to centre) and derives
+`viewPanPx = viewYaw * 300`. The vanishing point is drawn at
+`FIELD_WIDTH/2 - viewPanPx`, and every enemy's screen x is computed from
+that same shifted vanishing point, so the whole corridor turns together —
+it reads as looking around, not sliding. Purely cosmetic: the engine never
+sees yaw, `lateral`/`z` are unchanged, and determinism/tests are unaffected.
+Arrows are read via Phaser `createCursorKeys()` (not the typing KeyRouter)
+with `addCapture(['LEFT','RIGHT'])` so they don't scroll the page.
+
+**Proximity drama:** regular mutants swell up to ~4x as they close in
+(`EnemySprite`: `1 + 3·proximity^2.5`), so the last stretch before a mutant
+hits the build is genuinely in-your-face. The boss is exempt (fixed size).
+
 ## What did NOT change
 
 The typing engine's brain: lock-on, the locking-keystroke rule, miss

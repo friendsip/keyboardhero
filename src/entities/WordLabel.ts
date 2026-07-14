@@ -16,9 +16,10 @@ export class WordLabel {
   }
 
   setWord(word: string): void {
-    // Spaces render as '_' so passphrase gaps stay visible; the engine still
-    // expects the real space character.
-    this.text.setText(word.replace(/ /g, '_'));
+    // Real spaces read as a normal sentence, so players type the space bar
+    // naturally instead of hunting for an '_' key (the engine also accepts
+    // '_' as a space, just in case).
+    this.text.setText(word);
     this.applyTints(0);
   }
 

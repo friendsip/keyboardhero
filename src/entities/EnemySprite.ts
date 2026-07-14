@@ -23,6 +23,8 @@ export class EnemySprite {
   private baseScale = 1;
   /** Display height at depth-scale 1, for label/glow placement. */
   private dispH = TARGET_H;
+  /** Regular mutants balloon ~4x as they close in; the boss keeps its size. */
+  private dramatic = true;
 
   constructor(private readonly scene: Phaser.Scene) {
     this.glow = scene.add.image(0, 0, GLOW_KEY).setBlendMode(Phaser.BlendModes.ADD);
@@ -35,7 +37,11 @@ export class EnemySprite {
   }
 
   /** Pool reset — every field a previous life could have touched (docs/09 §8). */
-  activate(id: string, word: string, opts?: { design?: string; sizeFactor?: number }): void {
+  activate(
+    id: string,
+    word: string,
+    opts?: { design?: string; sizeFactor?: number; boss?: boolean },
+  ): void {
     this.enemyId = id;
     this.punchV = 1;
     this.phase = hash(id) % 628 / 100; // 0..2π
@@ -52,6 +58,7 @@ export class EnemySprite {
     const size = opts?.sizeFactor ?? (word.length === 1 ? MICRO_FACTOR : 1);
     this.dispH = TARGET_H * size;
     this.baseScale = this.dispH / this.body.height;
+    this.dramatic = !opts?.boss;
     this.body.clearTint();
     this.glow.setActive(true).setVisible(true).setAlpha(0);
     this.ring.setActive(false).setVisible(false);
@@ -81,8 +88,10 @@ export class EnemySprite {
     const bx = x + Math.sin(t * 2.1) * 4 * scale + Math.sin(t * 31) * jitter;
     const by = y + Math.cos(t * 27) * jitter * 0.5;
     const breathe = 1 + Math.sin(t * 3.4) * 0.035;
-    const s = scale * this.baseScale * this.punchV;
-    const heightNow = this.dispH * scale;
+    // Drama: regular mutants swell up to ~4x as they loom into the camera.
+    const drama = this.dramatic ? 1 + 3 * Math.pow(proximity, 2.5) : 1;
+    const s = scale * this.baseScale * this.punchV * drama;
+    const heightNow = this.dispH * scale * drama;
 
     this.body.setPosition(Math.round(bx), Math.round(by));
     this.body.setScale(s, s * breathe);
