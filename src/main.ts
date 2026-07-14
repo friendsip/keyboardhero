@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
 import { MenuScene } from './scenes/MenuScene';
+import { HowToScene } from './scenes/HowToScene';
 import { GameScene } from './scenes/GameScene';
 import { HUDScene } from './scenes/HUDScene';
 import { PauseScene } from './scenes/PauseScene';
@@ -21,7 +22,7 @@ const game = new Phaser.Game({
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
   dom: { createContainer: true },
-  scene: [BootScene, MenuScene, GameScene, HUDScene, PauseScene],
+  scene: [BootScene, MenuScene, HowToScene, GameScene, HUDScene, PauseScene],
 });
 
 game.registry.set('keyRouter', router);

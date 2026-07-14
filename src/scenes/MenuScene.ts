@@ -52,7 +52,6 @@ type UserState = 'display' | 'editing' | 'mutated';
 
 export class MenuScene extends Phaser.Scene {
   private soundText!: Phaser.GameObjects.BitmapText;
-  private levelText!: Phaser.GameObjects.BitmapText;
   private userText!: Phaser.GameObjects.BitmapText;
   private fixText!: Phaser.GameObjects.BitmapText;
   private startText!: Phaser.GameObjects.BitmapText;
@@ -90,19 +89,6 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setTint(0x8b949e);
 
-    const instructions = [
-      'mutants are loose in the codebase',
-      'type the word above a mutant to kill it',
-      'your first letter locks the target - finish the word',
-      'do not let them reach the BUILD',
-    ];
-    this.add
-      .bitmapText(cx, 262, FONT_KEY, instructions.join('\n'), 20)
-      .setOrigin(0.5, 0)
-      .setCenterAlign()
-      .setTint(0xe6edf3)
-      .setLineSpacing(9);
-
     for (const [key, x] of [['toothy-green', 128], ['toothy-red', 1152]] as const) {
       const toothy = this.add.image(x, 592, key);
       toothy.setScale(200 / toothy.height);
@@ -118,25 +104,30 @@ export class MenuScene extends Phaser.Scene {
     }
 
     this.userText = this.add
-      .bitmapText(cx, 438, FONT_KEY, '', 24)
+      .bitmapText(cx, 330, FONT_KEY, '', 24)
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     this.userText.on('pointerdown', () => this.startUserEdit());
 
     this.fixText = this.add
-      .bitmapText(cx, 476, FONT_KEY, '[ FIX MY USERNAME ]', 20)
+      .bitmapText(cx, 378, FONT_KEY, '[ MUTATE AGAIN ]', 20)
       .setOrigin(0.5)
       .setTint(0xf2cc60)
       .setInteractive({ useHandCursor: true });
     this.fixText.on('pointerdown', () => this.fixUsername());
 
     this.soundText = this.add
-      .bitmapText(cx, 514, FONT_KEY, '', 20)
+      .bitmapText(cx, 436, FONT_KEY, '', 20)
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     this.soundText.on('pointerdown', () => this.toggleSound());
 
-    this.levelText = this.add.bitmapText(cx, 550, FONT_KEY, '', 19).setOrigin(0.5).setTint(0x58a6ff);
+    const howText = this.add
+      .bitmapText(cx, 482, FONT_KEY, 'HOW TO PLAY  (press H or click)', 20)
+      .setOrigin(0.5)
+      .setTint(0x58a6ff)
+      .setInteractive({ useHandCursor: true });
+    howText.on('pointerdown', () => this.scene.start('HowTo'));
 
     this.startText = this.add
       .bitmapText(cx, 628, FONT_KEY, '', 21)
@@ -154,7 +145,7 @@ export class MenuScene extends Phaser.Scene {
       if (this.userState === 'mutated') {
         if (char === ' ') {
           this.commitAndStart();
-        } else if (char.toLowerCase() === 'f') {
+        } else if (char.toLowerCase() === 'm' || char.toLowerCase() === 'f') {
           this.fixUsername();
         }
         return;
@@ -170,6 +161,10 @@ export class MenuScene extends Phaser.Scene {
       }
       if (char.toLowerCase() === 'n') {
         this.startUserEdit();
+        return;
+      }
+      if (char.toLowerCase() === 'h') {
+        this.scene.start('HowTo');
         return;
       }
       const digit = Number(char);
@@ -238,14 +233,12 @@ export class MenuScene extends Phaser.Scene {
       this.startText.setText('TYPE 5 CHARACTERS (LETTERS + NUMBERS), THEN ENTER');
     } else if (this.userState === 'mutated') {
       this.userText.setText(`YOUR USERNAME HAS BEEN MUTATED TO: ${this.mutatedName}`).setTint(0x3fb950);
-      this.startText.setText('PRESS SPACE TO START (THIS NAME BECOMES PERMANENT)');
+      this.startText.setText('PRESS SPACE TO START');
     } else {
       this.userText.setText(`PLAYER: ${this.mutatedName || '?????'}  (press N or click to change)`).setTint(0x3fb950);
       this.startText.setText('PRESS SPACE TO START');
     }
     this.soundText.setText(`SOUND: ${soundOn ? 'ON ' : 'OFF'}  (press S or click)`);
     this.soundText.setTint(soundOn ? 0x3fb950 : 0x8b949e);
-    const desc = ['', '2-letter words', '3-letter words', '4-letter words', '5-letter words', '6-7 letter words', 'long words'][this.level];
-    this.levelText.setText(`LEVEL ${this.level} OF ${MAX_LEVEL} - ${desc}  (press 1-${MAX_LEVEL})`);
   }
 }
