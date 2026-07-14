@@ -77,17 +77,13 @@ export class MenuScene extends Phaser.Scene {
 
     const cx = FIELD_WIDTH / 2;
 
-    const logo = this.add.image(cx, 86, 'wemutate-logo');
+    const logo = this.add.image(cx, 86, 'wemutate-logo-w3');
     logo.setScale(380 / logo.width);
 
     this.add
-      .bitmapText(cx, 172, FONT_KEY, 'KILL THE MUTANTS', 54)
+      .bitmapText(cx, 178, FONT_KEY, 'NIGHT OF THE LIVING MUTANT', 40)
       .setOrigin(0.5)
       .setTint(0x3fb950);
-    this.add
-      .bitmapText(cx, 216, FONT_KEY, 'typing to freedom', 20)
-      .setOrigin(0.5)
-      .setTint(0x8b949e);
 
     for (const [key, x] of [['toothy-green', 128], ['toothy-red', 1152]] as const) {
       const toothy = this.add.image(x, 592, key);
