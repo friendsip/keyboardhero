@@ -10,7 +10,7 @@ export class BootScene extends Phaser.Scene {
   preload(): void {
     this.load.image('wemutate-logo', 'assets/wemutate-logo-white.png');
     this.load.image('wemutate-logo-w3', 'assets/wemutate-logo-w3.png');
-    this.load.image('night-title', 'assets/Night-of-Living-Mutantation-nu.png');
+    this.load.image('night-title', 'assets/night-of-the-living-mutant.png');
     this.load.image('toothy-green', 'assets/toothy-green.png');
     this.load.image('toothy-red', 'assets/toothy-red.png');
   }
