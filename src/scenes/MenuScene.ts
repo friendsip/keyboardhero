@@ -39,6 +39,25 @@ export function saveUser(name: string): void {
   }
 }
 
+const PLAYED_KEY = 'ttf.played';
+
+/** True once the player has started at least one game — unlocks level select. */
+function hasPlayedBefore(): boolean {
+  try {
+    return localStorage.getItem(PLAYED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markPlayed(): void {
+  try {
+    localStorage.setItem(PLAYED_KEY, '1');
+  } catch {
+    /* non-fatal */
+  }
+}
+
 function mutateName(base: string, avoidPos: number | null): { name: string; pos: number } {
   let pos = Math.floor(Math.random() * base.length);
   while (base.length > 1 && pos === avoidPos) {
@@ -55,6 +74,8 @@ export class MenuScene extends Phaser.Scene {
   private userText!: Phaser.GameObjects.BitmapText;
   private fixText!: Phaser.GameObjects.BitmapText;
   private startText!: Phaser.GameObjects.BitmapText;
+  private levelHint!: Phaser.GameObjects.BitmapText;
+  private levelButtons: Phaser.GameObjects.BitmapText[] = [];
   private level = 1;
   private userState: UserState = 'display';
   private baseName = '';
@@ -123,6 +144,24 @@ export class MenuScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
     howText.on('pointerdown', () => this.scene.start('HowTo'));
 
+    // Level select — revealed only after the first play (see renderAll).
+    this.levelHint = this.add
+      .bitmapText(cx, 580, FONT_KEY, 'JUMP TO ANY LEVEL - CLICK A NUMBER', 15)
+      .setOrigin(0.5)
+      .setTint(0x58a6ff);
+
+    for (let lvl = 1; lvl <= MAX_LEVEL; lvl++) {
+      const x = cx + (lvl - (MAX_LEVEL + 1) / 2) * 66;
+      const btn = this.add
+        .bitmapText(x, 612, FONT_KEY, String(lvl), 30)
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
+      btn.on('pointerover', () => btn.setTint(0xffffff));
+      btn.on('pointerout', () => this.paintLevelButtons());
+      btn.on('pointerdown', () => this.clickLevel(lvl));
+      this.levelButtons.push(btn);
+    }
+
     this.startText = this.add
       .bitmapText(cx, 660, FONT_KEY, '', 21)
       .setOrigin(0.5)
@@ -146,7 +185,7 @@ export class MenuScene extends Phaser.Scene {
       }
       // display state: normal menu controls
       if (char === ' ') {
-        this.scene.start('Game', { level: this.level });
+        this.beginGame(this.level);
         return;
       }
       if (char.toLowerCase() === 's') {
@@ -207,9 +246,28 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private commitAndStart(): void {
+    this.beginGame(this.level);
+  }
+
+  /** Saves the player, records that a game has been played, and launches. */
+  private beginGame(level: number): void {
     saveUser(this.mutatedName);
+    markPlayed();
     this.registry.set('user', this.mutatedName);
-    this.scene.start('Game', { level: this.level });
+    this.scene.start('Game', { level });
+  }
+
+  /** Clicking a level number jumps straight into that level (once unlocked). */
+  private clickLevel(level: number): void {
+    if (!hasPlayedBefore() || this.userState !== 'display') return;
+    this.level = level;
+    this.beginGame(level);
+  }
+
+  private paintLevelButtons(): void {
+    for (const btn of this.levelButtons) {
+      btn.setTint(Number(btn.text) === this.level ? 0xf2cc60 : 0x8b949e);
+    }
   }
 
   private toggleSound(): void {
@@ -234,5 +292,14 @@ export class MenuScene extends Phaser.Scene {
     }
     this.soundText.setText(`SOUND: ${soundOn ? 'ON ' : 'OFF'}  (press S or click)`);
     this.soundText.setTint(soundOn ? 0x3fb950 : 0x8b949e);
+
+    const showLevels = hasPlayedBefore() && this.userState === 'display';
+    this.levelHint.setVisible(showLevels);
+    for (const btn of this.levelButtons) {
+      btn.setVisible(showLevels);
+      if (showLevels) btn.setInteractive({ useHandCursor: true });
+      else btn.disableInteractive();
+    }
+    this.paintLevelButtons();
   }
 }

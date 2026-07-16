@@ -2,16 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Typing to Freedom — Night of the Living Mutant</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Mutant Invaders — wemutate</title>
     <style>
       html,
       body {
         margin: 0;
         padding: 0;
         height: 100%;
-        background: #010409;
+        background: #05070d;
         overflow: hidden;
+        touch-action: none;
+        overscroll-behavior: none;
       }
       #game {
         width: 100%;
@@ -20,14 +22,10 @@
         align-items: center;
         justify-content: center;
       }
-      #game canvas {
-        image-rendering: auto;
-      }
     </style>
-    <script type="module" crossorigin src="./assets/main-MJJpEPXa.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/AudioBus-4pjZG0YW.js">
   </head>
   <body>
     <div id="game"></div>
+    <script type="module" src="/src/invaders/main.ts"></script>
   </body>
 </html>

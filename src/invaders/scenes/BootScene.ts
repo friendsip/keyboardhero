@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
-import { registerRuntimeFont } from '../fx/RuntimeFont';
-import { registerCreatureTextures } from '../fx/CreatureTextures';
+import { registerRuntimeFont } from '../../fx/RuntimeFont';
+import { registerCreatureTextures } from '../../fx/CreatureTextures';
+import { registerShipTextures } from '../fx/ShipTextures';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -9,8 +10,6 @@ export class BootScene extends Phaser.Scene {
 
   preload(): void {
     this.load.image('wemutate-logo', 'assets/wemutate-glitch.png');
-    this.load.image('wemutate-logo-w3', 'assets/wemutate-glitch.png');
-    this.load.image('night-title', 'assets/night-of-the-living-mutant.png');
     this.load.image('toothy-green', 'assets/toothy-green.png');
     this.load.image('toothy-red', 'assets/toothy-red.png');
   }
@@ -18,6 +17,7 @@ export class BootScene extends Phaser.Scene {
   create(): void {
     registerRuntimeFont(this);
     registerCreatureTextures(this);
+    registerShipTextures(this);
     this.scene.start('Menu');
   }
 }

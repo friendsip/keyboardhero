@@ -42,13 +42,17 @@ describe('normalizeKey filter table (docs/03 §1)', () => {
   });
 
   it('drops named keys (Shift, Tab, arrows, F-keys)', () => {
-    for (const key of ['Shift', 'Tab', 'ArrowLeft', 'F5', 'Escape', 'Backspace']) {
+    for (const key of ['Shift', 'Tab', 'ArrowLeft', 'F5', 'Backspace']) {
       expect(normalizeKey(event({ key }))).toBeNull();
     }
   });
 
   it('passes Enter through as newline (menu confirm; gameplay ignores it)', () => {
     expect(normalizeKey(event({ key: 'Enter' }))).toEqual({ char: '\n', preventDefault: false });
+  });
+
+  it('passes Escape through as \\x1b (pause)', () => {
+    expect(normalizeKey(event({ key: 'Escape' }))).toEqual({ char: '\x1b', preventDefault: false });
   });
 
   it('keeps space, apostrophe and slash but flags preventDefault', () => {

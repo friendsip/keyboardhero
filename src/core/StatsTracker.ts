@@ -49,6 +49,11 @@ export class StatsTracker {
     return total === 0 ? 1 : this.correct / total;
   }
 
+  /** Live raw counters, for aggregating stats across a multi-level run. */
+  raw(): { correct: number; missed: number; activeMs: number } {
+    return { correct: this.correct, missed: this.missed, activeMs: this.activeMs };
+  }
+
   rollingWpm(): number | null {
     if (this.activeMs < WARMUP_MS) return null;
     const cutoff = this.activeMs - ROLLING_WINDOW_MS;

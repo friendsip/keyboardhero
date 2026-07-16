@@ -19,6 +19,7 @@ export function normalizeKey(e: KeyEventLike): NormalizedKey | null {
   if (e.isComposing || e.key === 'Process') return null;
   if (e.key === 'Dead' || e.key === 'Unidentified') return null;
   if (e.key === 'Enter') return { char: '\n', preventDefault: false };
+  if (e.key === 'Escape') return { char: '\x1b', preventDefault: false };
   if (e.key.length !== 1) return null;
   const preventDefault = e.key === ' ' || e.key === "'" || e.key === '/';
   return { char: e.key, preventDefault };

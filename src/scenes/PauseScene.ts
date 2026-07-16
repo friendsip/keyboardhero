@@ -16,7 +16,11 @@ export class PauseScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setTint(0xe6edf3);
     this.add
-      .bitmapText(FIELD_WIDTH / 2, FIELD_HEIGHT / 2 + 40, FONT_KEY, 'PRESS ANY KEY TO RESUME', 22)
+      .bitmapText(FIELD_WIDTH / 2, FIELD_HEIGHT / 2 + 40, FONT_KEY, 'PRESS M FOR MAIN MENU', 24)
+      .setOrigin(0.5)
+      .setTint(0xf2cc60);
+    this.add
+      .bitmapText(FIELD_WIDTH / 2, FIELD_HEIGHT / 2 + 78, FONT_KEY, 'any other key resumes', 20)
       .setOrigin(0.5)
       .setTint(0x8b949e);
   }

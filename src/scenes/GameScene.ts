@@ -6,6 +6,7 @@ import { FONT_KEY } from '../fx/RuntimeFont';
 import type { KeyRouter } from '../input/KeyRouter';
 import type { AudioBus } from '../fx/AudioBus';
 import { WORD_POOLS, SWARM_TIER, MAX_LEVEL, tierForLevel } from '../data/words/pools';
+import { aggregateWpm, aggregateAccuracy } from '../core/runStats';
 
 // Pseudo-3D projection: scale = FOCAL / (FOCAL + z); everything derives from it.
 const HORIZON_Y = 270;
@@ -21,6 +22,8 @@ const YAW_RANGE = 2.7;
 function spreadForLevel(level: number): number {
   return Math.min(1 + (level - 1) * 0.42, 2.6);
 }
+
+const START_INTEGRITY = 5;
 
 const LEVEL_MODULES = [
   'lib/utils/',
@@ -48,15 +51,17 @@ const BOSS_SENTENCES = [
  */
 function buildRail(level: number): RailSegment[] {
   const tier = tierForLevel(level);
-  const sp = (base: number): number => base + (level - 1) * 7;
+  // Speeds climb faster per level from level 2 onward.
+  const sp = (base: number): number => base + (level - 1) * 16;
   const module = LEVEL_MODULES[level - 1] ?? 'release gate';
   return [
     { kind: 'travel', durationMs: 3000, label: module },
-    { kind: 'encounter', tier, mutants: 8 + level, spawnIntervalMs: 1000 - level * 40, maxLive: 5, speedMin: sp(42), speedMax: sp(70) },
+    { kind: 'encounter', tier, mutants: 8 + level, spawnIntervalMs: 1000 - level * 40, maxLive: 5, speedMin: sp(44), speedMax: sp(74) },
     { kind: 'travel', durationMs: 3200, label: 'swarm nest ahead' },
-    { kind: 'encounter', tier: SWARM_TIER, mutants: 10 + level * 2, spawnIntervalMs: 620, maxLive: 7, speedMin: sp(55), speedMax: sp(85) },
+    // Single-letter swarm: small, quick to type, so they rush in fast.
+    { kind: 'encounter', tier: SWARM_TIER, mutants: 10 + level * 2, spawnIntervalMs: 620, maxLive: 7, speedMin: sp(95), speedMax: sp(135) },
     { kind: 'travel', durationMs: 3200, label: 'deep scan' },
-    { kind: 'encounter', tier, mutants: 10 + level * 2, spawnIntervalMs: 880 - level * 40, maxLive: 6, speedMin: sp(50), speedMax: sp(82) },
+    { kind: 'encounter', tier, mutants: 10 + level * 2, spawnIntervalMs: 880 - level * 40, maxLive: 6, speedMin: sp(52), speedMax: sp(86) },
     { kind: 'travel', durationMs: 2500, label: 'boss chamber' },
     {
       kind: 'boss',
@@ -76,6 +81,12 @@ export class GameScene extends Phaser.Scene {
   private over = false;
   private won = false;
   private level = 1;
+  /** Carried in from cleared levels so a run reads as one continuous game. */
+  private carryScore = 0;
+  private carryIntegrity = START_INTEGRITY;
+  private carryCorrect = 0;
+  private carryMissed = 0;
+  private carryActiveMs = 0;
   private grid!: Phaser.GameObjects.Graphics;
   private banner!: Phaser.GameObjects.BitmapText;
   private bossBars!: Phaser.GameObjects.Graphics;
@@ -95,10 +106,23 @@ export class GameScene extends Phaser.Scene {
     super('Game');
   }
 
-  init(data: { level?: number }): void {
+  init(data: {
+    level?: number;
+    carryScore?: number;
+    carryIntegrity?: number;
+    carryCorrect?: number;
+    carryMissed?: number;
+    carryActiveMs?: number;
+  }): void {
     // No saved progress by design — the game is too fast-paced for save
     // states. Levels are picked on the menu; only settings/identity persist.
     this.level = Math.min(Math.max(data.level ?? 1, 1), MAX_LEVEL);
+    this.carryScore = data.carryScore ?? 0;
+    // Build health persists across levels — a rough level leaves you fragile.
+    this.carryIntegrity = data.carryIntegrity ?? START_INTEGRITY;
+    this.carryCorrect = data.carryCorrect ?? 0;
+    this.carryMissed = data.carryMissed ?? 0;
+    this.carryActiveMs = data.carryActiveMs ?? 0;
   }
 
   create(): void {
@@ -121,7 +145,7 @@ export class GameScene extends Phaser.Scene {
 
     const config: EngineConfig = {
       wordTiers: WORD_POOLS,
-      integrity: 5,
+      integrity: this.carryIntegrity,
       segments: buildRail(this.level),
       seed,
       lateralSpread: spreadForLevel(this.level),
@@ -130,6 +154,10 @@ export class GameScene extends Phaser.Scene {
     this.registry.set('engine', this.engine);
     this.registry.set('seed', seed);
     this.registry.set('level', this.level);
+    this.registry.set('carryScore', this.carryScore);
+    this.registry.set('carryCorrect', this.carryCorrect);
+    this.registry.set('carryMissed', this.carryMissed);
+    this.registry.set('carryActiveMs', this.carryActiveMs);
 
     this.grid = this.add.graphics().setDepth(1);
     this.drawCockpit();
@@ -356,8 +384,8 @@ export class GameScene extends Phaser.Scene {
     const router = this.registry.get('keyRouter') as KeyRouter;
     const handler = (char: string): void => {
       if (this.scene.isPaused()) {
-        this.scene.stop('Pause');
-        this.scene.resume();
+        if (char.toLowerCase() === 'm') this.toMenu();
+        else this.resumeGame();
         return;
       }
       if (this.over) {
@@ -365,9 +393,12 @@ export class GameScene extends Phaser.Scene {
           const next = this.won ? (this.level >= MAX_LEVEL ? 1 : this.level + 1) : this.level;
           this.scene.restart({ level: next });
         } else if (char.toLowerCase() === 'm') {
-          this.scene.stop('HUD');
-          this.scene.start('Menu');
+          this.toMenu();
         }
+        return;
+      }
+      if (char === '\x1b') {
+        this.pauseGame(); // Escape pauses (with a menu option)
         return;
       }
       if (char === '\n') return; // Enter is a menu key, never a game letter
@@ -376,19 +407,31 @@ export class GameScene extends Phaser.Scene {
     router.setHandler(handler);
     this.cleanups.push(() => router.clearHandler(handler));
 
-    const pause = (): void => {
-      if (this.over || this.scene.isPaused()) return;
-      this.scene.pause();
-      this.scene.launch('Pause');
-    };
-    const onBlur = (): void => pause();
+    const onBlur = (): void => this.pauseGame();
     const onVisibility = (): void => {
-      if (document.visibilityState === 'hidden') pause();
+      if (document.visibilityState === 'hidden') this.pauseGame();
     };
     window.addEventListener('blur', onBlur);
     document.addEventListener('visibilitychange', onVisibility);
     this.cleanups.push(() => window.removeEventListener('blur', onBlur));
     this.cleanups.push(() => document.removeEventListener('visibilitychange', onVisibility));
+  }
+
+  private pauseGame(): void {
+    if (this.over || this.scene.isPaused()) return;
+    this.scene.pause();
+    this.scene.launch('Pause');
+  }
+
+  private resumeGame(): void {
+    this.scene.stop('Pause');
+    this.scene.resume();
+  }
+
+  private toMenu(): void {
+    this.scene.stop('Pause');
+    this.scene.stop('HUD');
+    this.scene.start('Menu');
   }
 
   private releaseUnit(enemyId: string, withFx: boolean): void {
@@ -426,37 +469,52 @@ export class GameScene extends Phaser.Scene {
     this.over = true;
     this.won = won;
 
-    const stats = this.engine.stats.finalize();
     const snap = this.engine.snapshot();
     const seed = this.registry.get('seed') as number;
     const finalLevel = this.level >= MAX_LEVEL;
+    const totalScore = this.carryScore + snap.score;
+    const r = this.engine.stats.raw();
+    const totals = {
+      correct: this.carryCorrect + r.correct,
+      missed: this.carryMissed + r.missed,
+      activeMs: this.carryActiveMs + r.activeMs,
+    };
+
+    // Clearing a level flows straight into the next one, carrying score,
+    // build health and cumulative typing stats.
+    if (won && !finalLevel) {
+      this.scene.restart({
+        level: this.level + 1,
+        carryScore: totalScore,
+        carryIntegrity: snap.integrity,
+        carryCorrect: totals.correct,
+        carryMissed: totals.missed,
+        carryActiveMs: totals.activeMs,
+      });
+      return;
+    }
 
     this.add
       .rectangle(FIELD_WIDTH / 2, FIELD_HEIGHT / 2, FIELD_WIDTH, FIELD_HEIGHT, 0x010409, 0.78)
       .setDepth(640);
-    const title = won
-      ? finalLevel
-        ? 'YOU SHIPPED v1.0.0'
-        : `LEVEL ${this.level} CLEARED`
-      : 'BUILD BROKEN';
+    const title = won ? 'YOU SHIPPED v1.0.0' : 'BUILD BROKEN';
     const titleColor = won ? 0x3fb950 : 0xf85149;
     const mutationScore =
       snap.totalMutants === 0 ? 100 : Math.round((snap.kills / snap.totalMutants) * 100);
     const user = (this.registry.get('user') as string) || '???';
+    const aggWpm = aggregateWpm(totals) ?? 0;
+    const aggAcc = aggregateAccuracy(totals);
     const lines = [
       `PLAYER ${user}`,
+      `REACHED LEVEL ${this.level}`,
+      `SCORE ${totalScore}`,
+      `WPM ${Math.round(aggWpm)}`,
+      `ACCURACY ${(aggAcc * 100).toFixed(1)}%`,
       `MUTATION SCORE ${mutationScore}%`,
-      `WPM ${Math.round(stats.wpm)}`,
-      `ACCURACY ${(stats.accuracy * 100).toFixed(1)}%`,
-      `SCORE ${snap.score}`,
       `BEST COMBO ${snap.maxCombo}`,
       `SEED ${seed}`,
     ];
-    const prompt = won
-      ? finalLevel
-        ? 'SPACE: PLAY AGAIN    M: MENU'
-        : `SPACE: LEVEL ${this.level + 1}    M: MENU`
-      : 'SPACE: RETRY    M: MENU';
+    const prompt = won ? 'SPACE: PLAY AGAIN    M: MENU' : 'SPACE: RETRY    M: MENU';
     this.add
       .bitmapText(FIELD_WIDTH / 2, 190, FONT_KEY, title, 52)
       .setOrigin(0.5)
